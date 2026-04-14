@@ -20,9 +20,9 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# Costanti
+# Costanti DEFAULT (modificabili dall'utente)
 ORE_GIORNO_MEDIO = 7.8
-MATURAZIONE_MENSILE = {
+MATURAZIONE_DEFAULT = {
     "FERIE": 14.66,
     "ROL": 2.99,
     "EX FEST": 2.66
@@ -75,6 +75,14 @@ def registra_utente(email, password, nome):
                 "nome": nome
             }).execute()
             
+            # Inserisci configurazione default maturazioni
+            for tipo, ore in MATURAZIONE_DEFAULT.items():
+                supabase.table("configurazioni").insert({
+                    "user_id": response.user.id,
+                    "chiave": f"maturazione_{tipo.lower().replace(' ', '_')}",
+                    "valore": str(ore)
+                }).execute()
+            
             return True, "Registrazione completata! Controlla la tua email per verificare l'account."
         return False, "Errore durante la registrazione"
     except Exception as e:
@@ -109,6 +117,40 @@ def logout_utente():
     for key in list(st.session_state.keys()):
         del st.session_state[key]
 
+# Funzioni configurazione
+def get_maturazioni_utente(user_id):
+    """Recupera maturazioni personalizzate utente"""
+    config = supabase.table("configurazioni").select("*").eq("user_id", user_id).execute()
+    
+    maturazioni = MATURAZIONE_DEFAULT.copy()
+    for conf in config.data:
+        if conf["chiave"] == "maturazione_ferie":
+            maturazioni["FERIE"] = float(conf["valore"])
+        elif conf["chiave"] == "maturazione_rol":
+            maturazioni["ROL"] = float(conf["valore"])
+        elif conf["chiave"] == "maturazione_ex_fest":
+            maturazioni["EX FEST"] = float(conf["valore"])
+    
+    return maturazioni
+
+def aggiorna_maturazione_utente(user_id, tipo_permesso, nuovo_valore):
+    """Aggiorna maturazione personalizzata"""
+    chiave = f"maturazione_{tipo_permesso.lower().replace(' ', '_')}"
+    
+    # Verifica se esiste già
+    existing = supabase.table("configurazioni").select("id").eq("user_id", user_id).eq("chiave", chiave).execute()
+    
+    if existing.data:
+        # Aggiorna
+        supabase.table("configurazioni").update({"valore": str(nuovo_valore)}).eq("user_id", user_id).eq("chiave", chiave).execute()
+    else:
+        # Inserisci nuovo
+        supabase.table("configurazioni").insert({
+            "user_id": user_id,
+            "chiave": chiave,
+            "valore": str(nuovo_valore)
+        }).execute()
+
 # Funzioni database
 def get_saldo_utente(user_id):
     """Recupera saldo corrente per tipo e anno"""
@@ -125,16 +167,31 @@ def get_saldo_utente(user_id):
         if key not in saldo:
             saldo[key] = {"tipo": tipo, "anno": anno, "ore": 0}
         
-        if mov["tipo_movimento"] in ["MATURAZIONE", "RETTIFICA_POSITIVA"]:
+        if mov["tipo_movimento"] in ["MATURAZIONE", "RETTIFICA_POSITIVA", "SALDO_INIZIALE"]:
             saldo[key]["ore"] += ore
         else:  # UTILIZZO, RETRIBUZIONE, RETTIFICA_NEGATIVA
             saldo[key]["ore"] -= ore
     
     return saldo
 
-def aggiungi_maturazione_mensile(user_id, mese, anno):
-    """Aggiunge maturazione mensile automatica"""
-    for tipo, ore in MATURAZIONE_MENSILE.items():
+def inserisci_saldo_iniziale(user_id, tipo_permesso, ore, mese_riferimento, anno_riferimento):
+    """Inserisce saldo iniziale per un tipo di permesso"""
+    supabase.table("movimenti").insert({
+        "user_id": user_id,
+        "tipo_permesso": tipo_permesso,
+        "tipo_movimento": "SALDO_INIZIALE",
+        "ore": ore,
+        "data_movimento": f"{anno_riferimento}-{mese_riferimento:02d}-01",
+        "anno_maturazione": anno_riferimento,
+        "note": f"Saldo iniziale {tipo_permesso} - {calendar.month_name[mese_riferimento]} {anno_riferimento}"
+    }).execute()
+
+def aggiungi_maturazione_mensile(user_id, mese, anno, maturazioni_custom=None):
+    """Aggiunge maturazione mensile (automatica o personalizzata)"""
+    if maturazioni_custom is None:
+        maturazioni_custom = get_maturazioni_utente(user_id)
+        
+    for tipo, ore in maturazioni_custom.items():
         supabase.table("movimenti").insert({
             "user_id": user_id,
             "tipo_permesso": tipo,
@@ -209,8 +266,8 @@ def get_storico_movimenti(user_id, filtro_tipo=None, filtro_anno=None):
     result = query.execute()
     return result.data
 
-def cancella_permesso(movimento_id, user_id):
-    """Cancella permesso (soft delete)"""
+def cancella_movimento(movimento_id, user_id):
+    """Cancella movimento (soft delete)"""
     supabase.table("movimenti").update({"cancellato": True}).eq("id", movimento_id).eq("user_id", user_id).execute()
 
 def retribuisci_permessi_anno_precedente(user_id, anno_da_retribuire):
@@ -271,6 +328,77 @@ def show_login():
                     st.success(message)
                 else:
                     st.error(message)
+
+# UI - Setup iniziale
+def show_setup_iniziale():
+    """Mostra setup per nuovo utente"""
+    st.title("🚀 Configurazione Iniziale")
+    st.write("Benvenuto! Configura il tuo saldo iniziale per iniziare a usare l'app.")
+    
+    # Verifica se ha già movimenti
+    movimenti = supabase.table("movimenti").select("id").eq("user_id", st.session_state.user_id).limit(1).execute()
+    
+    if movimenti.data:
+        # Ha già movimenti, vai al dashboard normale
+        st.session_state.setup_completato = True
+        st.rerun()
+        return
+    
+    st.subheader("📊 Inserisci i tuoi saldi attuali")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        mese_rif = st.selectbox("Mese di riferimento", range(1, 13), 
+                               format_func=lambda x: calendar.month_name[x],
+                               index=date.today().month - 1)
+        anno_rif = st.number_input("Anno di riferimento", 
+                                 min_value=2020, max_value=2030, 
+                                 value=date.today().year)
+    
+    with col2:
+        st.info(f"💡 **Come funziona:**\n\nInserisci le ore che hai **a fine {calendar.month_name[mese_rif]} {anno_rif}**.\n\nDal mese successivo inizieranno le maturazioni automatiche!")
+    
+    st.subheader("💰 Saldi attuali")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("**🏖️ FERIE**")
+        ferie_ore = st.number_input("Ore FERIE", min_value=0.0, max_value=500.0, value=0.0, step=0.5, key="ferie")
+        st.caption(f"≈ {ore_a_giorni(ferie_ore):.1f} giorni")
+    
+    with col2:
+        st.write("**⏰ ROL**")
+        rol_ore = st.number_input("Ore ROL", min_value=0.0, max_value=200.0, value=0.0, step=0.25, key="rol")
+        st.caption(f"≈ {ore_a_giorni(rol_ore):.1f} giorni")
+    
+    with col3:
+        st.write("**🎉 EX FEST**")
+        ex_ore = st.number_input("Ore EX FEST", min_value=0.0, max_value=200.0, value=0.0, step=0.25, key="ex")
+        st.caption(f"≈ {ore_a_giorni(ex_ore):.1f} giorni")
+    
+    if st.button("✅ Conferma Setup Iniziale", type="primary"):
+        # Inserisci saldi iniziali
+        try:
+            if ferie_ore > 0:
+                inserisci_saldo_iniziale(st.session_state.user_id, "FERIE", ferie_ore, mese_rif, anno_rif)
+            if rol_ore > 0:
+                inserisci_saldo_iniziale(st.session_state.user_id, "ROL", rol_ore, mese_rif, anno_rif)
+            if ex_ore > 0:
+                inserisci_saldo_iniziale(st.session_state.user_id, "EX FEST", ex_ore, mese_rif, anno_rif)
+            
+            st.session_state.setup_completato = True
+            st.success("✅ Setup completato! Benvenuto!")
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Errore durante il setup: {str(e)}")
+    
+    st.divider()
+    if st.button("⏭️ Salta Setup (inserirò dopo)"):
+        st.session_state.setup_completato = True
+        st.rerun()
 
 # UI - Dashboard principale
 def show_dashboard():
@@ -334,7 +462,7 @@ def show_dashboard():
                     st.rerun()
     
     # Tabs funzionalità
-    tab1, tab2, tab3, tab4 = st.tabs(["➕ Inserisci Permesso", "📊 Storico", "🔧 Gestione", "📈 Maturazioni"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["➕ Inserisci Permesso", "📊 Storico", "🔧 Gestione", "📈 Maturazioni", "⚙️ Configurazione"])
     
     with tab1:
         show_inserisci_permesso()
@@ -347,6 +475,9 @@ def show_dashboard():
     
     with tab4:
         show_maturazioni()
+    
+    with tab5:
+        show_configurazione()
 
 def show_inserisci_permesso():
     st.subheader("➕ Inserisci Permesso")
@@ -429,16 +560,16 @@ def show_storico():
         st.info("Nessun movimento trovato")
 
 def show_gestione():
-    st.subheader("🔧 Gestione Permessi")
+    st.subheader("🔧 Gestione Movimenti")
     
-    st.write("**Cancella permesso inserito per errore**")
+    st.write("**Cancella movimenti inseriti per errore**")
     
-    # Mostra solo movimenti UTILIZZO recenti non cancellati
-    movimenti = supabase.table("movimenti").select("*").eq("user_id", st.session_state.user_id).eq("tipo_movimento", "UTILIZZO").eq("cancellato", False).order("data_movimento", desc=True).limit(20).execute()
+    # Mostra movimenti recenti non cancellati (tutti i tipi)
+    movimenti = supabase.table("movimenti").select("*").eq("user_id", st.session_state.user_id).eq("cancellato", False).order("data_movimento", desc=True).limit(30).execute()
     
     if movimenti.data:
         for mov in movimenti.data:
-            col1, col2, col3, col4 = st.columns([2, 2, 3, 1])
+            col1, col2, col3, col4, col5 = st.columns([2, 1.5, 1.5, 3, 1])
             
             with col1:
                 st.write(f"📅 {mov['data_movimento']}")
@@ -447,38 +578,143 @@ def show_gestione():
                 st.write(f"**{mov['tipo_permesso']}**")
             
             with col3:
-                st.write(f"{mov['ore']}h ({ore_a_giorni(mov['ore']):.1f} gg) - {mov['note']}")
+                tipo_mov = mov['tipo_movimento']
+                if tipo_mov == "UTILIZZO":
+                    emoji = "❌"
+                elif tipo_mov == "MATURAZIONE":
+                    emoji = "➕"
+                elif tipo_mov == "SALDO_INIZIALE":
+                    emoji = "🔢"
+                elif tipo_mov == "RETRIBUZIONE":
+                    emoji = "💰"
+                else:
+                    emoji = "🔄"
+                st.write(f"{emoji} {tipo_mov}")
             
             with col4:
+                st.write(f"{mov['ore']}h ({ore_a_giorni(mov['ore']):.1f} gg) - {mov['note']}")
+            
+            with col5:
                 if st.button("🗑️", key=f"del_{mov['id']}"):
-                    cancella_permesso(mov['id'], st.session_state.user_id)
-                    st.success("Permesso cancellato")
+                    cancella_movimento(mov['id'], st.session_state.user_id)
+                    st.success("Movimento cancellato")
                     st.rerun()
     else:
-        st.info("Nessun permesso da cancellare")
+        st.info("Nessun movimento da gestire")
 
 def show_maturazioni():
-    st.subheader("📈 Aggiungi Maturazione Mensile")
+    st.subheader("📈 Gestisci Maturazioni")
     
-    col1, col2 = st.columns(2)
+    # Recupera maturazioni personalizzate
+    maturazioni = get_maturazioni_utente(st.session_state.user_id)
+    
+    tab1, tab2 = st.tabs(["➕ Aggiungi Maturazione", "🔢 Saldo Iniziale"])
+    
+    with tab1:
+        st.write("**Aggiungi maturazione mensile**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            mese = st.selectbox("Mese", range(1, 13), format_func=lambda x: calendar.month_name[x])
+            anno = st.number_input("Anno", min_value=2020, max_value=2030, value=date.today().year)
+        
+        with col2:
+            st.info(f"🔢 **Maturazione per {calendar.month_name[mese]} {anno}:**\n- FERIE: {maturazioni['FERIE']}h\n- ROL: {maturazioni['ROL']}h\n- EX FEST: {maturazioni['EX FEST']}h")
+        
+        if st.button("Aggiungi Maturazione"):
+            aggiungi_maturazione_mensile(st.session_state.user_id, mese, anno, maturazioni)
+            st.success(f"✅ Maturazione {calendar.month_name[mese]} {anno} aggiunta!")
+            st.rerun()
+    
+    with tab2:
+        st.write("**Inserisci saldo per un mese specifico**")
+        st.caption("Utile per correzioni o per aggiungere saldi che avevi prima dell'app")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            tipo_saldo = st.selectbox("Tipo permesso", ["FERIE", "ROL", "EX FEST"], key="saldo_tipo")
+            ore_saldo = st.number_input("Ore", min_value=0.0, max_value=500.0, value=0.0, step=0.5, key="saldo_ore")
+        
+        with col2:
+            mese_saldo = st.selectbox("Mese", range(1, 13), format_func=lambda x: calendar.month_name[x], key="saldo_mese")
+            anno_saldo = st.number_input("Anno", min_value=2020, max_value=2030, value=date.today().year, key="saldo_anno")
+        
+        st.caption(f"≈ {ore_a_giorni(ore_saldo):.1f} giorni")
+        
+        if st.button("Inserisci Saldo"):
+            if ore_saldo > 0:
+                inserisci_saldo_iniziale(st.session_state.user_id, tipo_saldo, ore_saldo, mese_saldo, anno_saldo)
+                st.success(f"✅ Saldo {tipo_saldo} inserito: {ore_saldo}h per {calendar.month_name[mese_saldo]} {anno_saldo}!")
+                st.rerun()
+            else:
+                st.error("Inserisci un valore maggiore di 0")
+
+def show_configurazione():
+    st.subheader("⚙️ Configurazione")
+    
+    # Recupera maturazioni attuali
+    maturazioni = get_maturazioni_utente(st.session_state.user_id)
+    
+    st.write("**🔧 Maturazioni Mensili Personalizzate**")
+    st.caption("Modifica i valori se cambia il tuo contratto")
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        mese = st.selectbox("Mese", range(1, 13), format_func=lambda x: calendar.month_name[x])
+        st.write("**🏖️ FERIE (ore/mese)**")
+        ferie_val = st.number_input("FERIE", min_value=0.0, max_value=50.0, 
+                                   value=maturazioni["FERIE"], step=0.01, key="conf_ferie")
+        st.caption(f"≈ {ore_a_giorni(ferie_val):.2f} gg/mese")
     
     with col2:
-        anno = st.number_input("Anno", min_value=2020, max_value=2030, value=date.today().year)
+        st.write("**⏰ ROL (ore/mese)**")
+        rol_val = st.number_input("ROL", min_value=0.0, max_value=20.0, 
+                                 value=maturazioni["ROL"], step=0.01, key="conf_rol")
+        st.caption(f"≈ {ore_a_giorni(rol_val):.2f} gg/mese")
     
-    st.info(f"🔢 Maturazione per {calendar.month_name[mese]} {anno}:\n- FERIE: {MATURAZIONE_MENSILE['FERIE']}h\n- ROL: {MATURAZIONE_MENSILE['ROL']}h\n- EX FEST: {MATURAZIONE_MENSILE['EX FEST']}h")
+    with col3:
+        st.write("**🎉 EX FEST (ore/mese)**")
+        ex_val = st.number_input("EX FEST", min_value=0.0, max_value=20.0, 
+                                value=maturazioni["EX FEST"], step=0.01, key="conf_ex")
+        st.caption(f"≈ {ore_a_giorni(ex_val):.2f} gg/mese")
     
-    if st.button("Aggiungi Maturazione"):
-        aggiungi_maturazione_mensile(st.session_state.user_id, mese, anno)
-        st.success(f"✅ Maturazione {calendar.month_name[mese]} {anno} aggiunta!")
-        st.rerun()
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        if st.button("💾 Salva Configurazione", type="primary"):
+            try:
+                aggiorna_maturazione_utente(st.session_state.user_id, "FERIE", ferie_val)
+                aggiorna_maturazione_utente(st.session_state.user_id, "ROL", rol_val)
+                aggiorna_maturazione_utente(st.session_state.user_id, "EX FEST", ex_val)
+                
+                st.success("✅ Configurazione salvata!")
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Errore: {str(e)}")
+    
+    with col2:
+        if st.button("🔄 Ripristina Valori Default"):
+            aggiorna_maturazione_utente(st.session_state.user_id, "FERIE", MATURAZIONE_DEFAULT["FERIE"])
+            aggiorna_maturazione_utente(st.session_state.user_id, "ROL", MATURAZIONE_DEFAULT["ROL"])
+            aggiorna_maturazione_utente(st.session_state.user_id, "EX FEST", MATURAZIONE_DEFAULT["EX FEST"])
+            
+            st.success("✅ Valori default ripristinati!")
+            st.rerun()
+    
+    st.divider()
+    
+    st.write("**📊 Valori Default**")
+    st.caption(f"FERIE: {MATURAZIONE_DEFAULT['FERIE']}h/mese | ROL: {MATURAZIONE_DEFAULT['ROL']}h/mese | EX FEST: {MATURAZIONE_DEFAULT['EX FEST']}h/mese")
 
 # Main
 def main():
     if "user_id" not in st.session_state:
         show_login()
+    elif "setup_completato" not in st.session_state:
+        show_setup_iniziale()
     else:
         show_dashboard()
 

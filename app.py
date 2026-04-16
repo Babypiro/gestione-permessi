@@ -702,33 +702,26 @@ def show_dashboard():
 def show_inserisci_permesso():
     st.subheader("➕ Inserisci Permesso")
     
-    # Inizializza stato
     if "giorni_permessi" not in st.session_state:
-        st.session_state.giorni_permessi = {}  # {data: {"tipo": "FERIE", "ore": 8, "note": ""}}
+        st.session_state.giorni_permessi = {}
     
     st.write("**1️⃣ Seleziona periodo**")
-    
     col1, col2, col3 = st.columns([1, 1, 1])
     
     with col1:
         data_inizio = st.date_input("Data inizio", value=date.today(), key="data_inizio_perm")
-    
     with col2:
         data_fine = st.date_input("Data fine", value=date.today(), key="data_fine_perm")
-    
     with col3:
         if st.button("📅 Carica giorni", type="primary"):
             if data_inizio > data_fine:
                 st.error("Data inizio deve essere prima della data fine!")
             else:
-                # Aggiungi tutti i giorni lavorativi del range
                 current = data_inizio
                 aggiunti = 0
-                
                 while current <= data_fine:
-                    if current.weekday() < 5:  # Solo giorni lavorativi
+                    if current.weekday() < 5:
                         if current not in st.session_state.giorni_permessi:
-                            # Determina ore in base al giorno
                             ore_default = 7 if current.weekday() == 4 else 8
                             st.session_state.giorni_permessi[current] = {
                                 "tipo": "FERIE",
@@ -737,7 +730,6 @@ def show_inserisci_permesso():
                             }
                             aggiunti += 1
                     current += timedelta(days=1)
-                
                 if aggiunti > 0:
                     st.success(f"✅ {aggiunti} giorni lavorativi aggiunti!")
                     st.rerun()
@@ -746,13 +738,11 @@ def show_inserisci_permesso():
     
     st.divider()
     
-    # 2. Mostra e modifica giorni selezionati
     if st.session_state.giorni_permessi:
         st.write("**2️⃣ Modifica permessi per ogni giorno**")
         
         giorni_ordinati = sorted(st.session_state.giorni_permessi.items())
         
-        # Tabella editabile
         for data_g, info in giorni_ordinati:
             col_data, col_tipo, col_ore, col_note, col_del = st.columns([2, 1.5, 1, 2, 0.5])
             
@@ -804,39 +794,31 @@ def show_inserisci_permesso():
         
         st.divider()
         
-        # Riepilogo
         totali = {"FERIE": 0, "ROL": 0, "EX FEST": 0}
         for info in st.session_state.giorni_permessi.values():
             totali[info["tipo"]] += info["ore"]
         
         st.write("**📊 Riepilogo totali:**")
         col1, col2, col3 = st.columns(3)
-        
         with col1:
             if totali["FERIE"] > 0:
                 st.metric("🏖️ FERIE", f"{totali['FERIE']}h", f"{ore_a_giorni(totali['FERIE']):.1f} gg")
-        
         with col2:
             if totali["ROL"] > 0:
                 st.metric("⏰ ROL", f"{totali['ROL']}h", f"{ore_a_giorni(totali['ROL']):.1f} gg")
-        
         with col3:
             if totali["EX FEST"] > 0:
                 st.metric("🎉 EX FEST", f"{totali['EX FEST']}h", f"{ore_a_giorni(totali['EX FEST']):.1f} gg")
         
         st.divider()
         
-        # Pulsanti azione
         col_conferma, col_cancella = st.columns(2)
-        
         with col_conferma:
             if st.button("✅ Conferma e Inserisci Tutti", type="primary", use_container_width=True):
                 errori = []
                 successi = 0
-                
                 for data_g, info in st.session_state.giorni_permessi.items():
                     note_finale = info["note"] if info["note"] else f"Permesso {info['tipo']}"
-                    
                     success, message = inserisci_permesso(
                         st.session_state.user_id,
                         info["tipo"],
@@ -845,28 +827,22 @@ def show_inserisci_permesso():
                         info["ore"],
                         note_finale
                     )
-                    
                     if success:
                         successi += 1
                     else:
                         errori.append(f"{data_g.strftime('%d/%m')}: {message}")
-                
                 if errori:
                     st.error("⚠️ Alcuni permessi non sono stati inseriti:\n" + "\n".join(errori))
-                
                 if successi > 0:
                     st.success(f"✅ {successi} permessi inseriti con successo!")
                     st.session_state.giorni_permessi = {}
                     st.rerun()
-        
         with col_cancella:
             if st.button("🗑️ Svuota tutto", use_container_width=True):
                 st.session_state.giorni_permessi = {}
                 st.rerun()
-    
     else:
         st.info("👆 Seleziona un periodo e clicca 'Carica giorni' per iniziare")
-
 
 def show_storico():
     st.subheader("📊 Storico Movimenti")
@@ -1113,402 +1089,119 @@ def genera_previsione_solo_maturazioni(user_id, mese_target, anno_target):
 
 def show_previsione():
     st.subheader("📈 Previsione Saldi Futuri")
-    
     oggi = date.today()
-    
-    # Inizializza stato
     if "prev_mese" not in st.session_state:
         st.session_state.prev_mese = oggi.month
+    if "prev_anno" not in st.session_state:
         st.session_state.prev_anno = oggi.year
     if "layout_previsione" not in st.session_state:
         st.session_state.layout_previsione = "affiancato"
     
-    # Selezione mese/anno con calendario
+    st.write("**Seleziona mese e anno**")
     col1, col2, col3, col4 = st.columns([1.5, 1, 1, 1.5])
-    
     with col1:
-        mese_sel = st.selectbox(
-            "📅 Mese",
-            range(1, 13),
-            format_func=lambda x: calendar.month_name[x],
-            index=st.session_state.prev_mese - 1
-        )
-    
+        mese_sel = st.selectbox("📅 Mese", range(1, 13), format_func=lambda x: calendar.month_name[x], index=st.session_state.prev_mese - 1)
     with col2:
-        anno_sel = st.number_input(
-            "📆 Anno",
-            min_value=2020,
-            max_value=2035,
-            value=st.session_state.prev_anno,
-            step=1
-        )
-    
+        anno_sel = st.number_input("📆 Anno", min_value=2020, max_value=2035, value=st.session_state.prev_anno, step=1)
     with col3:
         if st.button("🔍 Visualizza", type="primary"):
             st.session_state.prev_mese = mese_sel
             st.session_state.prev_anno = anno_sel
             st.rerun()
-    
     with col4:
         col_oggi, col_layout = st.columns(2)
-        
         with col_oggi:
             if st.button("📍 Oggi"):
                 st.session_state.prev_mese = oggi.month
                 st.session_state.prev_anno = oggi.year
                 st.rerun()
-        
         with col_layout:
             if st.button("🔄 Layout"):
                 st.session_state.layout_previsione = "riga" if st.session_state.layout_previsione == "affiancato" else "affiancato"
                 st.rerun()
     
     st.divider()
-    
-    # Determina tipo visualizzazione
     data_selezionata = date(st.session_state.prev_anno, st.session_state.prev_mese, 1)
     data_oggi = date(oggi.year, oggi.month, 1)
-    
     is_futuro = data_selezionata > data_oggi
     is_presente = data_selezionata == data_oggi
-    is_passato = data_selezionata < data_oggi
     
-    if is_passato:
+    if data_selezionata < data_oggi:
         st.info(f"**📊 Saldo Storico** - {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
     elif is_presente:
         st.info(f"**📍 Saldo Attuale** - {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
     else:
         st.warning(f"**🔮 Previsione Futuro** - {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
     
-    # Calcola saldi
     saldo_effettivo = genera_previsione_mese(st.session_state.user_id, st.session_state.prev_mese, st.session_state.prev_anno)
-    
     if is_futuro:
         saldo_previsto = genera_previsione_solo_maturazioni(st.session_state.user_id, st.session_state.prev_mese, st.session_state.prev_anno)
     
-    # Organizza saldi
     def organizza_saldo(saldo):
         saldo_per_tipo = {"FERIE": {}, "ROL": {}, "EX FEST": {}}
         for key, value in saldo.items():
-            tipo = value["tipo"]
-            anno = value["anno"]
-            ore = value["ore"]
-            if ore > 0:
-                saldo_per_tipo[tipo][anno] = ore
+            if value["ore"] > 0:
+                saldo_per_tipo[value["tipo"]][value["anno"]] = value["ore"]
         return saldo_per_tipo
     
     saldo_eff_per_tipo = organizza_saldo(saldo_effettivo)
-    
     if is_futuro:
         saldo_prev_per_tipo = organizza_saldo(saldo_previsto)
     
-    # VISUALIZZAZIONE SALDI
     if is_futuro:
-        # Layout affiancato o in riga
         if st.session_state.layout_previsione == "affiancato":
             col_eff, col_prev = st.columns(2)
-            
             with col_eff:
                 st.markdown("### 📊 Saldo Effettivo")
                 st.caption("(include ferie già prenotate)")
                 st.divider()
-                
                 for tipo, emoji in [("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]:
                     totale = sum(saldo_eff_per_tipo[tipo].values())
                     st.metric(f"{emoji} {tipo}", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
                     for anno, ore in sorted(saldo_eff_per_tipo[tipo].items()):
                         st.caption(f"  {anno}: {ore:.2f}h")
-                    st.write("")
-            
             with col_prev:
                 st.markdown("### 🔮 Saldo Previsto")
                 st.caption("(solo maturazioni)")
                 st.divider()
-                
                 for tipo, emoji in [("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]:
-                    totale_eff = sum(saldo_eff_per_tipo[tipo].values())
                     totale_prev = sum(saldo_prev_per_tipo[tipo].values())
+                    totale_eff = sum(saldo_eff_per_tipo[tipo].values())
                     diff = totale_prev - totale_eff
-                    
                     st.metric(f"{emoji} {tipo}", f"{totale_prev:.2f}h", f"{diff:+.2f}h")
-                    st.caption(f"  ≈ {ore_a_giorni(totale_prev):.1f} gg")
                     for anno, ore in sorted(saldo_prev_per_tipo[tipo].items()):
                         st.caption(f"  {anno}: {ore:.2f}h")
-                    st.write("")
-        
-        else:  # Layout in riga
+        else:
             st.markdown("### 📊 Saldo Effettivo")
             st.caption("(include ferie già prenotate)")
-            
             col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                totale = sum(saldo_eff_per_tipo["FERIE"].values())
-                st.metric("🏖️ FERIE", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
-                for anno, ore in sorted(saldo_eff_per_tipo["FERIE"].items()):
-                    st.caption(f"{anno}: {ore:.2f}h")
-            
-            with col2:
-                totale = sum(saldo_eff_per_tipo["ROL"].values())
-                st.metric("⏰ ROL", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
-                for anno, ore in sorted(saldo_eff_per_tipo["ROL"].items()):
-                    st.caption(f"{anno}: {ore:.2f}h")
-            
-            with col3:
-                totale = sum(saldo_eff_per_tipo["EX FEST"].values())
-                st.metric("🎉 EX FEST", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
-                for anno, ore in sorted(saldo_eff_per_tipo["EX FEST"].items()):
-                    st.caption(f"{anno}: {ore:.2f}h")
-            
+            for idx, (tipo, emoji) in enumerate([("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]):
+                with [col1, col2, col3][idx]:
+                    totale = sum(saldo_eff_per_tipo[tipo].values())
+                    st.metric(f"{emoji} {tipo}", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
+                    for anno, ore in sorted(saldo_eff_per_tipo[tipo].items()):
+                        st.caption(f"{anno}: {ore:.2f}h")
             st.divider()
-            
             st.markdown("### 🔮 Saldo Previsto")
             st.caption("(solo maturazioni)")
-            
             col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                totale_eff = sum(saldo_eff_per_tipo["FERIE"].values())
-                totale_prev = sum(saldo_prev_per_tipo["FERIE"].values())
-                diff = totale_prev - totale_eff
-                st.metric("🏖️ FERIE", f"{totale_prev:.2f}h", f"{diff:+.2f}h")
-                st.caption(f"≈ {ore_a_giorni(totale_prev):.1f} gg")
-                for anno, ore in sorted(saldo_prev_per_tipo["FERIE"].items()):
-                    st.caption(f"{anno}: {ore:.2f}h")
-            
-            with col2:
-                totale_eff = sum(saldo_eff_per_tipo["ROL"].values())
-                totale_prev = sum(saldo_prev_per_tipo["ROL"].values())
-                diff = totale_prev - totale_eff
-                st.metric("⏰ ROL", f"{totale_prev:.2f}h", f"{diff:+.2f}h")
-                st.caption(f"≈ {ore_a_giorni(totale_prev):.1f} gg")
-                for anno, ore in sorted(saldo_prev_per_tipo["ROL"].items()):
-                    st.caption(f"{anno}: {ore:.2f}h")
-            
-            with col3:
-                totale_eff = sum(saldo_eff_per_tipo["EX FEST"].values())
-                totale_prev = sum(saldo_prev_per_tipo["EX FEST"].values())
-                diff = totale_prev - totale_eff
-                st.metric("🎉 EX FEST", f"{totale_prev:.2f}h", f"{diff:+.2f}h")
-                st.caption(f"≈ {ore_a_giorni(totale_prev):.1f} gg")
-                for anno, ore in sorted(saldo_prev_per_tipo["EX FEST"].items()):
-                    st.caption(f"{anno}: {ore:.2f}h")
-    
+            for idx, (tipo, emoji) in enumerate([("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]):
+                with [col1, col2, col3][idx]:
+                    totale_prev = sum(saldo_prev_per_tipo[tipo].values())
+                    totale_eff = sum(saldo_eff_per_tipo[tipo].values())
+                    st.metric(f"{emoji} {tipo}", f"{totale_prev:.2f}h", f"{(totale_prev - totale_eff):+.2f}h")
+                    for anno, ore in sorted(saldo_prev_per_tipo[tipo].items()):
+                        st.caption(f"{anno}: {ore:.2f}h")
     else:
-        # Mese passato/presente - vista singola
         col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.subheader("🏖️ FERIE")
-            totale = sum(saldo_eff_per_tipo["FERIE"].values())
-            st.metric("Totale", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
-            for anno, ore in sorted(saldo_eff_per_tipo["FERIE"].items()):
-                st.caption(f"{anno}: {ore:.2f}h ({ore_a_giorni(ore):.1f} gg)")
-        
-        with col2:
-            st.subheader("⏰ ROL")
-            totale = sum(saldo_eff_per_tipo["ROL"].values())
-            st.metric("Totale", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
-            for anno, ore in sorted(saldo_eff_per_tipo["ROL"].items()):
-                st.caption(f"{anno}: {ore:.2f}h ({ore_a_giorni(ore):.1f} gg)")
-        
-        with col3:
-            st.subheader("🎉 EX FEST")
-            totale = sum(saldo_eff_per_tipo["EX FEST"].values())
-            st.metric("Totale", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
-            for anno, ore in sorted(saldo_eff_per_tipo["EX FEST"].items()):
-                st.caption(f"{anno}: {ore:.2f}h ({ore_a_giorni(ore):.1f} gg)")
-    
-    st.divider()
-    st.caption("💡 **Clicca 🔄 Layout per cambiare visualizzazione** • **📍 Oggi per tornare al mese corrente**")
+        for idx, (tipo, emoji) in enumerate([("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]):
+            with [col1, col2, col3][idx]:
+                st.subheader(f"{emoji} {tipo}")
+                totale = sum(saldo_eff_per_tipo[tipo].values())
+                st.metric("Totale", f"{totale:.2f}h", f"{ore_a_giorni(totale):.1f} gg")
+                for anno, ore in sorted(saldo_eff_per_tipo[tipo].items()):
+                    st.caption(f"{anno}: {ore:.2f}h")
 
-
-def show_configurazione():
-    st.subheader("⚙️ Configurazione")
-    
-    # Recupera maturazioni attuali
-    maturazioni = get_maturazioni_utente(st.session_state.user_id)
-    
-    st.write("**🔧 Maturazioni Mensili Personalizzate**")
-    st.caption("Modifica i valori se cambia il tuo contratto")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.write("**🏖️ FERIE (ore/mese)**")
-        ferie_val = st.number_input("FERIE", min_value=0.0, max_value=50.0, 
-                                   value=maturazioni["FERIE"], step=0.01, key="conf_ferie")
-        st.caption(f"≈ {ore_a_giorni(ferie_val):.2f} gg/mese")
-    
-    with col2:
-        st.write("**⏰ ROL (ore/mese)**")
-        rol_val = st.number_input("ROL", min_value=0.0, max_value=20.0, 
-                                 value=maturazioni["ROL"], step=0.01, key="conf_rol")
-        st.caption(f"≈ {ore_a_giorni(rol_val):.2f} gg/mese")
-    
-    with col3:
-        st.write("**🎉 EX FEST (ore/mese)**")
-        ex_val = st.number_input("EX FEST", min_value=0.0, max_value=20.0, 
-                                value=maturazioni["EX FEST"], step=0.01, key="conf_ex")
-        st.caption(f"≈ {ore_a_giorni(ex_val):.2f} gg/mese")
-    
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        if st.button("💾 Salva Configurazione", type="primary"):
-            try:
-                aggiorna_maturazione_utente(st.session_state.user_id, "FERIE", ferie_val)
-                aggiorna_maturazione_utente(st.session_state.user_id, "ROL", rol_val)
-                aggiorna_maturazione_utente(st.session_state.user_id, "EX FEST", ex_val)
-                
-                st.success("✅ Configurazione salvata!")
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"Errore: {str(e)}")
-    
-    with col2:
-        if st.button("🔄 Ripristina Valori Default"):
-            aggiorna_maturazione_utente(st.session_state.user_id, "FERIE", MATURAZIONE_DEFAULT["FERIE"])
-            aggiorna_maturazione_utente(st.session_state.user_id, "ROL", MATURAZIONE_DEFAULT["ROL"])
-            aggiorna_maturazione_utente(st.session_state.user_id, "EX FEST", MATURAZIONE_DEFAULT["EX FEST"])
-            
-            st.success("✅ Valori default ripristinati!")
-            st.rerun()
-    
-    st.divider()
-    
-    st.write("**📊 Valori Default**")
-    st.caption(f"FERIE: {MATURAZIONE_DEFAULT['FERIE']}h/mese | ROL: {MATURAZIONE_DEFAULT['ROL']}h/mese | EX FEST: {MATURAZIONE_DEFAULT['EX FEST']}h/mese")
-
-
-
-def genera_previsione_solo_maturazioni(user_id, mese_target, anno_target):
-    """Genera previsione considerando SOLO maturazioni (ignora utilizzi futuri)"""
-    data_fine_mese = date(anno_target, mese_target, calendar.monthrange(anno_target, mese_target)[1])
-    oggi = date.today()
-    
-    # Recupera movimenti FINO AD OGGI (non futuri)
-    movimenti = supabase.table("movimenti").select("*").eq("user_id", user_id).eq("cancellato", False).lte("data_movimento", oggi.isoformat()).execute()
-    
-    saldo = {}
-    
-    # Calcola saldo attuale
-    for mov in movimenti.data:
-        tipo = mov["tipo_permesso"]
-        anno_mat = mov["anno_maturazione"]
-        ore = mov["ore"]
-        
-        key = f"{tipo}_{anno_mat}"
-        if key not in saldo:
-            saldo[key] = {"tipo": tipo, "anno": anno_mat, "ore": 0}
-        
-        if mov["tipo_movimento"] in ["MATURAZIONE", "RETTIFICA_POSITIVA", "SALDO_INIZIALE"]:
-            saldo[key]["ore"] += ore
-        else:
-            saldo[key]["ore"] -= ore
-    
-    # Se è mese futuro, aggiungi maturazioni
-    if data_fine_mese > oggi:
-        maturazioni = get_maturazioni_utente(user_id)
-        current = date(oggi.year, oggi.month, 1)
-        
-        while current <= data_fine_mese:
-            # Vai al mese successivo
-            if current.month == 12:
-                current = date(current.year + 1, 1, 1)
-            else:
-                current = date(current.year, current.month + 1, 1)
-            
-            if current <= data_fine_mese:
-                # Aggiungi maturazioni per questo mese
-                for tipo, ore_mensili in maturazioni.items():
-                    key = f"{tipo}_{current.year}"
-                    if key not in saldo:
-                        saldo[key] = {"tipo": tipo, "anno": current.year, "ore": 0}
-                    saldo[key]["ore"] += ore_mensili
-    
-    return saldo
-
-def show_previsione():
-    st.subheader("📈 Previsione Saldi Futuri")
-    
-    oggi = date.today()
-    
-    # Inizializza stato se non esiste
-    if "prev_mese" not in st.session_state:
-        st.session_state.prev_mese = oggi.month
-        st.session_state.prev_anno = oggi.year
-    
-    # Navigazione mese
-    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
-    
-    with col1:
-        if st.button("◀◀ -1 Anno"):
-            st.session_state.prev_anno -= 1
-            st.rerun()
-    
-    with col2:
-        if st.button("◀ -1 Mese"):
-            if st.session_state.prev_mese == 1:
-                st.session_state.prev_mese = 12
-                st.session_state.prev_anno -= 1
-            else:
-                st.session_state.prev_mese -= 1
-            st.rerun()
-    
-    with col3:
-        st.markdown(f"### 📅 {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
-    
-    with col4:
-        if st.button("+1 Mese ▶"):
-            if st.session_state.prev_mese == 12:
-                st.session_state.prev_mese = 1
-                st.session_state.prev_anno += 1
-            else:
-                st.session_state.prev_mese += 1
-            st.rerun()
-    
-    with col5:
-        if st.button("+1 Anno ▶▶"):
-            st.session_state.prev_anno += 1
-            st.rerun()
-    
-    # Reset a mese corrente
-    col_reset1, col_reset2, col_reset3 = st.columns([1, 1, 2])
-    with col_reset1:
-        if st.button("🔄 Torna a Oggi"):
-            st.session_state.prev_mese = oggi.month
-            st.session_state.prev_anno = oggi.year
-            st.rerun()
-    
-    st.divider()
-    
-    # Determina se è passato, presente o futuro
-    data_selezionata = date(st.session_state.prev_anno, st.session_state.prev_mese, 1)
-    data_oggi = date(oggi.year, oggi.month, 1)
-    
-    is_futuro = data_selezionata > data_oggi
-    is_presente = data_selezionata == data_oggi
-    is_passato = data_selezionata < data_oggi
-    
-    if is_passato:
-        tipo_visualizzazione = "📊 Saldo Storico"
-        st.info(f"**{tipo_visualizzazione}** - {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
-    elif is_presente:
-        tipo_visualizzazione = "📍 Saldo Attuale"
-        st.info(f"**{tipo_visualizzazione}** - {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
-    else:
-        st.warning(f"**🔮 Previsione Futuro** - {calendar.month_name[st.session_state.prev_mese]} {st.session_state.prev_anno}")
-    
-    # Calcola saldi
-    saldo_effettivo = genera_previsione_mese(st.session_state.user_id, st.session_state.prev_mese, st.session_state.prev_anno)
-    
-    # Per mesi futuri, calcola anche saldo previsto (senza utilizzi futuri)
-    if is_futuro:
-        saldo_previsto = genera_previsione_solo_maturazioni(st.session_state.user_id, st.session_state.prev_mese, st.session_state.prev_anno)
-    
-    # Organizza per tipo
     def organizza_saldo(saldo):
         saldo_per_tipo = {"FERIE": {}, "ROL": {}, "EX FEST": {}}
         for key, value in saldo.items():
@@ -1616,70 +1309,6 @@ def show_previsione():
     
     st.divider()
     
-    # Mostra andamento storico
-    st.subheader("📊 Andamento Ultimi 12 Mesi")
-    
-    try:
-        storico = get_storico_mensile(st.session_state.user_id, 11)
-        
-        if storico:
-            df_storico = pd.DataFrame(storico)
-            df_storico["mese_label"] = df_storico.apply(
-                lambda x: f"{calendar.month_abbr[x['mese']]} {x['anno']}", axis=1
-            )
-            
-            # Crea tre grafici separati
-            import altair as alt
-            
-            # Grafico FERIE
-            chart_ferie = alt.Chart(df_storico).mark_line(point=True, color="#FF6B6B").encode(
-                x=alt.X("mese_label:N", title="Mese", sort=None),
-                y=alt.Y("ferie:Q", title="Ore FERIE"),
-                tooltip=["mese_label", alt.Tooltip("ferie:Q", format=".2f", title="Ore")]
-            ).properties(
-                title="FERIE",
-                height=200
-            )
-            
-            # Grafico ROL
-            chart_rol = alt.Chart(df_storico).mark_line(point=True, color="#4ECDC4").encode(
-                x=alt.X("mese_label:N", title="Mese", sort=None),
-                y=alt.Y("rol:Q", title="Ore ROL"),
-                tooltip=["mese_label", alt.Tooltip("rol:Q", format=".2f", title="Ore")]
-            ).properties(
-                title="ROL",
-                height=200
-            )
-            
-            # Grafico EX FEST
-            chart_ex = alt.Chart(df_storico).mark_line(point=True, color="#95E1D3").encode(
-                x=alt.X("mese_label:N", title="Mese", sort=None),
-                y=alt.Y("ex_fest:Q", title="Ore EX FEST"),
-                tooltip=["mese_label", alt.Tooltip("ex_fest:Q", format=".2f", title="Ore")]
-            ).properties(
-                title="EX FEST",
-                height=200
-            )
-            
-            st.altair_chart(chart_ferie, use_container_width=True)
-            st.altair_chart(chart_rol, use_container_width=True)
-            st.altair_chart(chart_ex, use_container_width=True)
-            
-    except Exception as e:
-        st.warning(f"Impossibile generare grafico: {str(e)}")
-    
-    st.divider()
-    
-    # Legenda
-    st.caption("💡 **Come funziona:**")
-    st.caption("- **📊 Saldo Effettivo**: include tutti i movimenti fino al mese selezionato (anche ferie già prenotate)")
-    st.caption("- **🔮 Saldo Previsto**: include solo maturazioni, ignora utilizzi futuri (utile per pianificare)")
-    st.caption("- **Differenza**: mostra quanto hai già pianificato di utilizzare in futuro")
-
-
-# Main
-def main():
-    if "user_id" not in st.session_state:
         show_login()
     elif "setup_completato" not in st.session_state:
         show_setup_iniziale()

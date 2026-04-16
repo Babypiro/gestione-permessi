@@ -1307,8 +1307,10 @@ def show_previsione():
             for anno, ore in sorted(saldo_eff_per_tipo["EX FEST"].items()):
                 st.caption(f"{anno}: {ore:.2f}h ({ore_a_giorni(ore):.1f} gg)")
     
-    st.divider()
-    
+
+# Main
+def main():
+    if "user_id" not in st.session_state:
         show_login()
     elif "setup_completato" not in st.session_state:
         show_setup_iniziale()

@@ -704,140 +704,321 @@ def show_inserisci_permesso():
     
     if "giorni_permessi" not in st.session_state:
         st.session_state.giorni_permessi = {}
+    if "mese_cal" not in st.session_state:
+        st.session_state.mese_cal = date.today().month
+    if "anno_cal" not in st.session_state:
+        st.session_state.anno_cal = date.today().year
     
-    col_sx, col_dx = st.columns([1, 2])
+    import streamlit.components.v1 as components
     
-    with col_sx:
-        st.write("**Seleziona giorno**")
-        
-        # Calendario singolo
-        data_sel = st.date_input(
-            "📅 Giorno",
-            value=date.today(),
-            label_visibility="collapsed"
-        )
-        
-        # Verifica weekend
-        if data_sel.weekday() >= 5:
-            st.warning("⚠️ Weekend! Seleziona un giorno lavorativo")
-        else:
-            # Form per il giorno selezionato
-            tipo_perm = st.selectbox("Tipo permesso", ["FERIE", "ROL", "EX FEST"])
-            
-            # Ore default in base al giorno
-            ore_default = 7.0 if data_sel.weekday() == 4 else 8.0
-            ore_perm = st.number_input("Ore", min_value=0.5, max_value=8.0, value=ore_default, step=0.5)
-            
-            note_perm = st.text_input("Note (opzionale)", "")
-            
-            col_add, col_update = st.columns(2)
-            
-            with col_add:
-                if data_sel not in st.session_state.giorni_permessi:
-                    if st.button("➕ Aggiungi", type="primary", use_container_width=True):
-                        st.session_state.giorni_permessi[data_sel] = {
-                            "tipo": tipo_perm,
-                            "ore": ore_perm,
-                            "note": note_perm
-                        }
-                        st.success(f"✅ {data_sel.strftime('%d/%m')} aggiunto!")
-                        st.rerun()
-                else:
-                    st.info("Giorno già in lista →")
-            
-            with col_update:
-                if data_sel in st.session_state.giorni_permessi:
-                    if st.button("🔄 Aggiorna", use_container_width=True):
-                        st.session_state.giorni_permessi[data_sel] = {
-                            "tipo": tipo_perm,
-                            "ore": ore_perm,
-                            "note": note_perm
-                        }
-                        st.success(f"✅ {data_sel.strftime('%d/%m')} aggiornato!")
-                        st.rerun()
+    # Sezione calendario
+    st.write("**1️⃣ Seleziona giorni dal calendario**")
+    st.caption("Clicca sui giorni per selezionarli/deselezionarli")
     
-    with col_dx:
-        st.write("**Giorni selezionati**")
+    col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
+    
+    with col_nav1:
+        if st.button("◀ Mese prec"):
+            if st.session_state.mese_cal == 1:
+                st.session_state.mese_cal = 12
+                st.session_state.anno_cal -= 1
+            else:
+                st.session_state.mese_cal -= 1
+            st.rerun()
+    
+    with col_nav2:
+        st.markdown(f"### {calendar.month_name[st.session_state.mese_cal]} {st.session_state.anno_cal}")
+    
+    with col_nav3:
+        if st.button("Mese succ ▶"):
+            if st.session_state.mese_cal == 12:
+                st.session_state.mese_cal = 1
+                st.session_state.anno_cal += 1
+            else:
+                st.session_state.mese_cal += 1
+            st.rerun()
+    
+    # Crea calendario HTML interattivo
+    cal = calendar.monthcalendar(st.session_state.anno_cal, st.session_state.mese_cal)
+    
+    # Giorni già selezionati
+    giorni_sel_str = ",".join([d.strftime("%Y-%m-%d") for d in st.session_state.giorni_permessi.keys()])
+    
+    calendario_html = f"""
+    <style>
+        .calendario {{
+            font-family: Arial, sans-serif;
+            margin: 20px 0;
+        }}
+        .cal-header {{
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            margin-bottom: 10px;
+        }}
+        .cal-header div {{
+            text-align: center;
+            font-weight: bold;
+            padding: 10px;
+            background: #f0f2f6;
+            border-radius: 5px;
+        }}
+        .cal-grid {{
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+        }}
+        .cal-day {{
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s;
+            background: white;
+        }}
+        .cal-day:hover {{
+            background: #e8f4f8;
+            transform: scale(1.05);
+        }}
+        .cal-day.weekend {{
+            background: #f5f5f5;
+            color: #999;
+            cursor: not-allowed;
+        }}
+        .cal-day.selected {{
+            background: #4CAF50;
+            color: white;
+            border-color: #45a049;
+            font-weight: bold;
+        }}
+        .cal-day.empty {{
+            border: none;
+            cursor: default;
+        }}
+        .cal-day.empty:hover {{
+            background: white;
+            transform: none;
+        }}
+    </style>
+    
+    <div class="calendario">
+        <div class="cal-header">
+            <div>Lun</div>
+            <div>Mar</div>
+            <div>Mer</div>
+            <div>Gio</div>
+            <div>Ven</div>
+            <div>Sab</div>
+            <div>Dom</div>
+        </div>
+        <div class="cal-grid" id="calendario">
+        </div>
+    </div>
+    
+    <script>
+        const mese = {st.session_state.mese_cal};
+        const anno = {st.session_state.anno_cal};
+        const settimane = {cal};
+        const giorniSelezionati = "{giorni_sel_str}".split(",").filter(d => d);
         
-        if st.session_state.giorni_permessi:
-            # Tabella giorni
-            giorni_ord = sorted(st.session_state.giorni_permessi.items())
-            
-            for data_g, info in giorni_ord:
-                col1, col2, col3, col4, col5 = st.columns([2, 1.5, 1, 2, 0.5])
+        const calendario = document.getElementById("calendario");
+        
+        settimane.forEach(settimana => {{
+            settimana.forEach((giorno, idx) => {{
+                const div = document.createElement("div");
+                div.className = "cal-day";
                 
-                with col1:
-                    giorno_nome = calendar.day_name[data_g.weekday()]
-                    st.write(f"📅 **{data_g.strftime('%d/%m/%Y')}**")
-                    st.caption(giorno_nome[:3])
-                
-                with col2:
-                    st.write(f"**{info['tipo']}**")
-                
-                with col3:
-                    st.write(f"{info['ore']}h")
-                    st.caption(f"{ore_a_giorni(info['ore']):.1f} gg")
-                
-                with col4:
-                    if info['note']:
-                        st.caption(info['note'])
-                
-                with col5:
-                    if st.button("🗑️", key=f"del_{data_g}"):
-                        del st.session_state.giorni_permessi[data_g]
-                        st.rerun()
-            
-            st.divider()
-            
-            # Riepilogo
-            totali = {"FERIE": 0, "ROL": 0, "EX FEST": 0}
-            for info in st.session_state.giorni_permessi.values():
-                totali[info["tipo"]] += info["ore"]
-            
-            st.write("**📊 Totali:**")
-            cols = st.columns(3)
-            for idx, (tipo, emoji) in enumerate([("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]):
-                if totali[tipo] > 0:
-                    with cols[idx]:
-                        st.metric(emoji, f"{totali[tipo]}h", f"{ore_a_giorni(totali[tipo]):.1f} gg")
-            
-            st.divider()
-            
-            # Conferma
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("✅ Conferma e Inserisci Tutti", type="primary", use_container_width=True):
-                    errori = []
-                    successi = 0
-                    for data_g, info in st.session_state.giorni_permessi.items():
-                        note_fin = info["note"] if info["note"] else f"Permesso {info['tipo']}"
-                        success, message = inserisci_permesso(
-                            st.session_state.user_id,
-                            info["tipo"],
-                            data_g,
-                            data_g,
-                            info["ore"],
-                            note_fin
-                        )
-                        if success:
-                            successi += 1
-                        else:
-                            errori.append(f"{data_g.strftime('%d/%m')}: {message}")
+                if (giorno === 0) {{
+                    div.className += " empty";
+                }} else {{
+                    const dataStr = `${{anno}}-${{String(mese).padStart(2, '0')}}-${{String(giorno).padStart(2, '0')}}`;
+                    div.textContent = giorno;
                     
-                    if errori:
-                        st.error("⚠️ Errori:\n" + "\n".join(errori))
-                    if successi > 0:
-                        st.success(f"✅ {successi} permessi inseriti!")
-                        st.session_state.giorni_permessi = {}
-                        st.rerun()
+                    // Weekend (sabato=5, domenica=6)
+                    if (idx >= 5) {{
+                        div.className += " weekend";
+                        div.title = "Weekend";
+                    }} else {{
+                        // Selezionato?
+                        if (giorniSelezionati.includes(dataStr)) {{
+                            div.className += " selected";
+                        }}
+                        
+                        div.onclick = function() {{
+                            // Toggle selezione
+                            window.parent.postMessage({{
+                                type: 'streamlit:setComponentValue',
+                                data: dataStr
+                            }}, '*');
+                        }};
+                    }}
+                }}
+                
+                calendario.appendChild(div);
+            }});
+        }});
+    </script>
+    """
+    
+    # Renderizza calendario
+    clicked_date = components.html(calendario_html, height=400)
+    
+    # Se hanno cliccato un giorno
+    if clicked_date:
+        try:
+            data_cliccata = datetime.strptime(clicked_date, "%Y-%m-%d").date()
+            
+            if data_cliccata in st.session_state.giorni_permessi:
+                # Rimuovi
+                del st.session_state.giorni_permessi[data_cliccata]
+            else:
+                # Aggiungi
+                ore_default = 7.0 if data_cliccata.weekday() == 4 else 8.0
+                st.session_state.giorni_permessi[data_cliccata] = {
+                    "tipo": "FERIE",
+                    "ore": ore_default,
+                    "note": ""
+                }
+            st.rerun()
+        except:
+            pass
+    
+    st.divider()
+    
+    # Sezione modifica
+    if st.session_state.giorni_permessi:
+        st.write("**2️⃣ Modifica permessi per ogni giorno**")
+        
+        giorni_ord = sorted(st.session_state.giorni_permessi.items())
+        
+        # Header
+        col_h1, col_h2, col_h3, col_h4, col_h5 = st.columns([2, 1.5, 1, 2.5, 0.5])
+        with col_h1:
+            st.markdown("**📅 Data**")
+        with col_h2:
+            st.markdown("**Tipo**")
+        with col_h3:
+            st.markdown("**Ore**")
+        with col_h4:
+            st.markdown("**Note**")
+        with col_h5:
+            st.write("")
+        
+        st.markdown("---")
+        
+        # Righe editabili
+        for data_g, info in giorni_ord:
+            col1, col2, col3, col4, col5 = st.columns([2, 1.5, 1, 2.5, 0.5])
+            
+            with col1:
+                giorno_nome = calendar.day_name[data_g.weekday()]
+                st.write(f"{data_g.strftime('%d/%m/%Y')}")
+                st.caption(f"{giorno_nome[:3]}")
             
             with col2:
-                if st.button("🗑️ Svuota tutto", use_container_width=True):
+                tipo_nuovo = st.selectbox(
+                    "Tipo",
+                    ["FERIE", "ROL", "EX FEST"],
+                    index=["FERIE", "ROL", "EX FEST"].index(info["tipo"]),
+                    key=f"tipo_{data_g}",
+                    label_visibility="collapsed"
+                )
+                if tipo_nuovo != info["tipo"]:
+                    st.session_state.giorni_permessi[data_g]["tipo"] = tipo_nuovo
+                    st.rerun()
+            
+            with col3:
+                ore_nuove = st.number_input(
+                    "Ore",
+                    min_value=0.5,
+                    max_value=8.0,
+                    value=float(info["ore"]),
+                    step=0.5,
+                    key=f"ore_{data_g}",
+                    label_visibility="collapsed"
+                )
+                if ore_nuove != info["ore"]:
+                    st.session_state.giorni_permessi[data_g]["ore"] = ore_nuove
+                    st.rerun()
+            
+            with col4:
+                note_nuove = st.text_input(
+                    "Note",
+                    value=info["note"],
+                    key=f"note_{data_g}",
+                    placeholder="Opzionale",
+                    label_visibility="collapsed"
+                )
+                if note_nuove != info["note"]:
+                    st.session_state.giorni_permessi[data_g]["note"] = note_nuove
+            
+            with col5:
+                if st.button("🗑️", key=f"del_{data_g}"):
+                    del st.session_state.giorni_permessi[data_g]
+                    st.rerun()
+        
+        st.divider()
+        
+        # Riepilogo
+        totali = {"FERIE": 0, "ROL": 0, "EX FEST": 0}
+        for info in st.session_state.giorni_permessi.values():
+            totali[info["tipo"]] += info["ore"]
+        
+        st.write("**📊 Riepilogo:**")
+        col1, col2, col3 = st.columns(3)
+        
+        for idx, (tipo, emoji) in enumerate([("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]):
+            if totali[tipo] > 0:
+                with [col1, col2, col3][idx]:
+                    st.metric(emoji, f"{totali[tipo]:.1f}h", f"{ore_a_giorni(totali[tipo]):.1f} gg")
+        
+        st.divider()
+        
+        # Conferma
+        col_conf, col_canc = st.columns(2)
+        
+        with col_conf:
+            if st.button("✅ Conferma e Inserisci", type="primary", use_container_width=True):
+                errori = []
+                successi = 0
+                
+                for data_g, info in st.session_state.giorni_permessi.items():
+                    note_finale = info["note"] if info["note"] else f"Permesso {info['tipo']}"
+                    
+                    success, message = inserisci_permesso(
+                        st.session_state.user_id,
+                        info["tipo"],
+                        data_g,
+                        data_g,
+                        info["ore"],
+                        note_finale
+                    )
+                    
+                    if success:
+                        successi += 1
+                    else:
+                        errori.append(f"{data_g.strftime('%d/%m')}: {message}")
+                
+                if errori:
+                    st.error("⚠️ Errori:\n" + "\n".join(errori))
+                
+                if successi > 0:
+                    st.success(f"✅ {successi} permessi inseriti!")
                     st.session_state.giorni_permessi = {}
                     st.rerun()
         
-        else:
-            st.info("👈 Seleziona i giorni dal calendario")
+        with col_canc:
+            if st.button("🗑️ Cancella tutto", use_container_width=True):
+                st.session_state.giorni_permessi = {}
+                st.rerun()
+    
+    else:
+        st.info("👆 Clicca sui giorni del calendario per selezionarli")
 
 def show_storico():
     st.subheader("📊 Storico Movimenti")

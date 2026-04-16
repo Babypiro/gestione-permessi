@@ -705,144 +705,139 @@ def show_inserisci_permesso():
     if "giorni_permessi" not in st.session_state:
         st.session_state.giorni_permessi = {}
     
-    st.write("**1️⃣ Seleziona periodo**")
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col_sx, col_dx = st.columns([1, 2])
     
-    with col1:
-        data_inizio = st.date_input("Data inizio", value=date.today(), key="data_inizio_perm")
-    with col2:
-        data_fine = st.date_input("Data fine", value=date.today(), key="data_fine_perm")
-    with col3:
-        if st.button("📅 Carica giorni", type="primary"):
-            if data_inizio > data_fine:
-                st.error("Data inizio deve essere prima della data fine!")
-            else:
-                current = data_inizio
-                aggiunti = 0
-                while current <= data_fine:
-                    if current.weekday() < 5:
-                        if current not in st.session_state.giorni_permessi:
-                            ore_default = 7 if current.weekday() == 4 else 8
-                            st.session_state.giorni_permessi[current] = {
-                                "tipo": "FERIE",
-                                "ore": ore_default,
-                                "note": ""
-                            }
-                            aggiunti += 1
-                    current += timedelta(days=1)
-                if aggiunti > 0:
-                    st.success(f"✅ {aggiunti} giorni lavorativi aggiunti!")
-                    st.rerun()
+    with col_sx:
+        st.write("**Seleziona giorno**")
+        
+        # Calendario singolo
+        data_sel = st.date_input(
+            "📅 Giorno",
+            value=date.today(),
+            label_visibility="collapsed"
+        )
+        
+        # Verifica weekend
+        if data_sel.weekday() >= 5:
+            st.warning("⚠️ Weekend! Seleziona un giorno lavorativo")
+        else:
+            # Form per il giorno selezionato
+            tipo_perm = st.selectbox("Tipo permesso", ["FERIE", "ROL", "EX FEST"])
+            
+            # Ore default in base al giorno
+            ore_default = 7.0 if data_sel.weekday() == 4 else 8.0
+            ore_perm = st.number_input("Ore", min_value=0.5, max_value=8.0, value=ore_default, step=0.5)
+            
+            note_perm = st.text_input("Note (opzionale)", "")
+            
+            col_add, col_update = st.columns(2)
+            
+            with col_add:
+                if data_sel not in st.session_state.giorni_permessi:
+                    if st.button("➕ Aggiungi", type="primary", use_container_width=True):
+                        st.session_state.giorni_permessi[data_sel] = {
+                            "tipo": tipo_perm,
+                            "ore": ore_perm,
+                            "note": note_perm
+                        }
+                        st.success(f"✅ {data_sel.strftime('%d/%m')} aggiunto!")
+                        st.rerun()
                 else:
-                    st.info("Tutti i giorni sono già stati aggiunti o sono weekend")
+                    st.info("Giorno già in lista →")
+            
+            with col_update:
+                if data_sel in st.session_state.giorni_permessi:
+                    if st.button("🔄 Aggiorna", use_container_width=True):
+                        st.session_state.giorni_permessi[data_sel] = {
+                            "tipo": tipo_perm,
+                            "ore": ore_perm,
+                            "note": note_perm
+                        }
+                        st.success(f"✅ {data_sel.strftime('%d/%m')} aggiornato!")
+                        st.rerun()
     
-    st.divider()
-    
-    if st.session_state.giorni_permessi:
-        st.write("**2️⃣ Modifica permessi per ogni giorno**")
+    with col_dx:
+        st.write("**Giorni selezionati**")
         
-        giorni_ordinati = sorted(st.session_state.giorni_permessi.items())
-        
-        for data_g, info in giorni_ordinati:
-            col_data, col_tipo, col_ore, col_note, col_del = st.columns([2, 1.5, 1, 2, 0.5])
+        if st.session_state.giorni_permessi:
+            # Tabella giorni
+            giorni_ord = sorted(st.session_state.giorni_permessi.items())
             
-            with col_data:
-                giorno_nome = calendar.day_name[data_g.weekday()]
-                st.write(f"📅 **{data_g.strftime('%d/%m/%Y')}** ({giorno_nome[:3]})")
+            for data_g, info in giorni_ord:
+                col1, col2, col3, col4, col5 = st.columns([2, 1.5, 1, 2, 0.5])
+                
+                with col1:
+                    giorno_nome = calendar.day_name[data_g.weekday()]
+                    st.write(f"📅 **{data_g.strftime('%d/%m/%Y')}**")
+                    st.caption(giorno_nome[:3])
+                
+                with col2:
+                    st.write(f"**{info['tipo']}**")
+                
+                with col3:
+                    st.write(f"{info['ore']}h")
+                    st.caption(f"{ore_a_giorni(info['ore']):.1f} gg")
+                
+                with col4:
+                    if info['note']:
+                        st.caption(info['note'])
+                
+                with col5:
+                    if st.button("🗑️", key=f"del_{data_g}"):
+                        del st.session_state.giorni_permessi[data_g]
+                        st.rerun()
             
-            with col_tipo:
-                tipo_nuovo = st.selectbox(
-                    "Tipo",
-                    ["FERIE", "ROL", "EX FEST"],
-                    index=["FERIE", "ROL", "EX FEST"].index(info["tipo"]),
-                    key=f"tipo_{data_g}",
-                    label_visibility="collapsed"
-                )
-                if tipo_nuovo != info["tipo"]:
-                    st.session_state.giorni_permessi[data_g]["tipo"] = tipo_nuovo
-                    st.rerun()
+            st.divider()
             
-            with col_ore:
-                ore_nuove = st.number_input(
-                    "Ore",
-                    min_value=0.5,
-                    max_value=8.0,
-                    value=float(info["ore"]),
-                    step=0.5,
-                    key=f"ore_{data_g}",
-                    label_visibility="collapsed"
-                )
-                if ore_nuove != info["ore"]:
-                    st.session_state.giorni_permessi[data_g]["ore"] = ore_nuove
-                    st.rerun()
+            # Riepilogo
+            totali = {"FERIE": 0, "ROL": 0, "EX FEST": 0}
+            for info in st.session_state.giorni_permessi.values():
+                totali[info["tipo"]] += info["ore"]
             
-            with col_note:
-                note_nuove = st.text_input(
-                    "Note",
-                    value=info["note"],
-                    key=f"note_{data_g}",
-                    placeholder="Note opzionali",
-                    label_visibility="collapsed"
-                )
-                if note_nuove != info["note"]:
-                    st.session_state.giorni_permessi[data_g]["note"] = note_nuove
+            st.write("**📊 Totali:**")
+            cols = st.columns(3)
+            for idx, (tipo, emoji) in enumerate([("FERIE", "🏖️"), ("ROL", "⏰"), ("EX FEST", "🎉")]):
+                if totali[tipo] > 0:
+                    with cols[idx]:
+                        st.metric(emoji, f"{totali[tipo]}h", f"{ore_a_giorni(totali[tipo]):.1f} gg")
             
-            with col_del:
-                if st.button("🗑️", key=f"del_{data_g}"):
-                    del st.session_state.giorni_permessi[data_g]
-                    st.rerun()
-        
-        st.divider()
-        
-        totali = {"FERIE": 0, "ROL": 0, "EX FEST": 0}
-        for info in st.session_state.giorni_permessi.values():
-            totali[info["tipo"]] += info["ore"]
-        
-        st.write("**📊 Riepilogo totali:**")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if totali["FERIE"] > 0:
-                st.metric("🏖️ FERIE", f"{totali['FERIE']}h", f"{ore_a_giorni(totali['FERIE']):.1f} gg")
-        with col2:
-            if totali["ROL"] > 0:
-                st.metric("⏰ ROL", f"{totali['ROL']}h", f"{ore_a_giorni(totali['ROL']):.1f} gg")
-        with col3:
-            if totali["EX FEST"] > 0:
-                st.metric("🎉 EX FEST", f"{totali['EX FEST']}h", f"{ore_a_giorni(totali['EX FEST']):.1f} gg")
-        
-        st.divider()
-        
-        col_conferma, col_cancella = st.columns(2)
-        with col_conferma:
-            if st.button("✅ Conferma e Inserisci Tutti", type="primary", use_container_width=True):
-                errori = []
-                successi = 0
-                for data_g, info in st.session_state.giorni_permessi.items():
-                    note_finale = info["note"] if info["note"] else f"Permesso {info['tipo']}"
-                    success, message = inserisci_permesso(
-                        st.session_state.user_id,
-                        info["tipo"],
-                        data_g,
-                        data_g,
-                        info["ore"],
-                        note_finale
-                    )
-                    if success:
-                        successi += 1
-                    else:
-                        errori.append(f"{data_g.strftime('%d/%m')}: {message}")
-                if errori:
-                    st.error("⚠️ Alcuni permessi non sono stati inseriti:\n" + "\n".join(errori))
-                if successi > 0:
-                    st.success(f"✅ {successi} permessi inseriti con successo!")
+            st.divider()
+            
+            # Conferma
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Conferma e Inserisci Tutti", type="primary", use_container_width=True):
+                    errori = []
+                    successi = 0
+                    for data_g, info in st.session_state.giorni_permessi.items():
+                        note_fin = info["note"] if info["note"] else f"Permesso {info['tipo']}"
+                        success, message = inserisci_permesso(
+                            st.session_state.user_id,
+                            info["tipo"],
+                            data_g,
+                            data_g,
+                            info["ore"],
+                            note_fin
+                        )
+                        if success:
+                            successi += 1
+                        else:
+                            errori.append(f"{data_g.strftime('%d/%m')}: {message}")
+                    
+                    if errori:
+                        st.error("⚠️ Errori:\n" + "\n".join(errori))
+                    if successi > 0:
+                        st.success(f"✅ {successi} permessi inseriti!")
+                        st.session_state.giorni_permessi = {}
+                        st.rerun()
+            
+            with col2:
+                if st.button("🗑️ Svuota tutto", use_container_width=True):
                     st.session_state.giorni_permessi = {}
                     st.rerun()
-        with col_cancella:
-            if st.button("🗑️ Svuota tutto", use_container_width=True):
-                st.session_state.giorni_permessi = {}
-                st.rerun()
-    else:
-        st.info("👆 Seleziona un periodo e clicca 'Carica giorni' per iniziare")
+        
+        else:
+            st.info("👈 Seleziona i giorni dal calendario")
 
 def show_storico():
     st.subheader("📊 Storico Movimenti")
